@@ -37,3 +37,11 @@ You can record vidoes using a trained model by running:
 # Configuration
 
 To customize a training or demo run (for example to use a different game), change the available settings in `hedonist/config.py`.
+
+
+# Sample Stats
+
+Running vanilla DQN on OpenAI Gym environment BreakoutDeterministic-v3
+
+<img src="https://raw.githubusercontent.com/nerdoid/hedonist/master/assets/average_score_per_episode.png?raw=true" alt="Average Score" title="Average Score" width="307" height="207">
+<img src="https://raw.githubusercontent.com/nerdoid/hedonist/master/assets/max_score_per_episode.png?raw=true" alt="Average Score" title="Average Score" width="307" height="207">
