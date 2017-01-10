@@ -176,11 +176,10 @@ def init_frames(capacity, screen_dims, state_size, index, frame_input,
     state_sample = tf.transpose(
         tf.gather(
             frames,
-            batch_slices - 1
+            modulo(batch_slices - 1, capacity)
         ),
         perm=[0, 2, 3, 1]
     )
-
 
     current_state = get_current_state(capacity, index, state_size, frames)
 
