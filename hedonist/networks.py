@@ -154,16 +154,41 @@ class QNetwork():
                 )
             )
 
-            diff = tf.abs(predictions - targets)
-
-            if error_clip >= 0:
-                clipped = tf.clip_by_value(diff, 0.0, error_clip)
-                extra = diff - clipped
-                errors = (0.5 * tf.square(clipped)) + (error_clip * extra)
-            else:
-                errors = (0.5 * tf.square(diff))
-
+            errors = self.build_errors(predictions, targets, error_clip)
             return tf.reduce_sum(errors)
+
+    def build_errors(self, behavior_qs, target_qs, error_clip):
+        """Let's talk about error clipping. The DeepMind Nature paper has this
+        to say:
+
+        "We also found it helpful to clip the error term from the update
+        [omitted] to be between -1 and 1. Because the absolute value loss
+        function |x| has a derivative of -1 for all negative values of x and a
+        derivative of 1 for all positive values of x, clipping the squared
+        error to be between -1 and 1 corresponds to using an absolute value
+        loss function for errors outside of the (-1,1) interval. This form of
+        error clipping further improved the stability of the algorithm."
+
+        But this is confusing and not quite what they do in their Lua code.
+        In fact the squared error is always positive, so clipping it to (-1, 1)
+        makes no sense. And clipping the inner error would still result in a
+        constant value of 1 outside of the clipping region. And that gradient
+        would be 0, not 1.
+
+        Instead we want a function that is quadratic between -1 and 1, and
+        linear, in particular, |x|, outside of that region. That's what the
+        below code achieves.
+        """
+        diff = tf.abs(target_qs - behavior_qs)
+
+        quadratic = diff
+        linear = 0.0
+        if error_clip > 0:
+            quadratic = tf.clip_by_value(diff, 0.0, error_clip)
+            linear = diff - quadratic
+
+        errors = 0.5 * tf.square(quadratic) + error_clip * linear
+        return errors
 
     def build_max_action_values(self, num_actions):
         return tf.reduce_max(self.target_q_layer, 1)
