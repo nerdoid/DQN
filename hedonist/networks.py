@@ -2,7 +2,6 @@ import os
 import tensorflow as tf
 import numpy as np
 
-
 class QNetwork():
     """A convolutional neural network approximator for the action-value function
     of a deep Q-learning algorithm. This houses both the behavior and target
@@ -99,9 +98,8 @@ class QNetwork():
         )
         self.train_op = self.build_graves_rmsprop_optimizer(
             config['learning_rate'],
-            config['rmsprop_decay'],
-            config['rmsprop_epsilon'],
-            config['gradient_clip']
+            config['rms_scale'],
+            config['rms_constant']
         )
 
     def build_action_value_network(self, observation_pl, scope, trainable):
@@ -193,53 +191,75 @@ class QNetwork():
     def build_max_action_values(self, num_actions):
         return tf.reduce_max(self.target_q_layer, 1)
 
-    def build_graves_rmsprop_optimizer(self, learning_rate, rmsprop_decay,
-                                       rmsprop_constant, gradient_clip):
-        """Alex Graves' RMSprop algorithm:
+    def build_graves_rmsprop_optimizer(self, learning_rate, rms_scale,
+                                       rms_constant):
+        """Alex Graves' RMSProp algorithm:
 
         https://arxiv.org/abs/1308.0850
+
+        The Graves RMSProp has a non-standard rms term in the equation:
+
+        eps
+        --- * gradients
+        rms
+
+        The strategy here is to manually compute rms, divide the gradients
+        element-wise by rms, then feed the resulting gradient tensor into
+        TensorFlow's vanilla gradient descent optimizer which handles the eps.
         """
         with tf.name_scope('rmsprop'):
             optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 
-            grads_and_vars = optimizer.compute_gradients(self.loss)
-            grads = [gv[0] for gv in grads_and_vars]
-            params = [gv[1] for gv in grads_and_vars]
+            gradients, variables = zip(*optimizer.compute_gradients(self.loss))
 
-            if gradient_clip > 0:
-                grads = tf.clip_by_global_norm(grads, gradient_clip)[0]
+            rms_sum = [tf.Variable(tf.zeros(gradient.get_shape()))
+                       for gradient in gradients]
+            rms_momentum_sum = [tf.Variable(tf.zeros(gradient.get_shape()))
+                                for gradient in gradients]
 
-            avg_grads = [tf.Variable(tf.zeros(var.get_shape()))
-                         for var in params]
-            avg_square_grads = [tf.Variable(tf.zeros(var.get_shape()))
-                                for var in params]
-
-            update_avg_grads = [
-                grad_pair[0].assign(
-                    (rmsprop_decay * grad_pair[0]) + ((1 - rmsprop_decay) * grad_pair[1])
-                )
-                for grad_pair in zip(avg_grads, grads)
-            ]
-            update_avg_square_grads = [
-                grad_pair[0].assign(
-                    (rmsprop_decay * grad_pair[0]) + ((1 - rmsprop_decay) * tf.square(grad_pair[1]))
-                )
-                for grad_pair in zip(avg_square_grads, grads)
-            ]
-            avg_grad_updates = update_avg_grads + update_avg_square_grads
+            rms_updates = self.build_rms_updates(
+                rms_sum,
+                rms_momentum_sum,
+                rms_scale,
+                gradients
+            )
 
             rms = [
-                tf.sqrt(avg_grad_pair[1] - tf.square(avg_grad_pair[0]) + rmsprop_constant)
-                for avg_grad_pair in zip(avg_grads, avg_square_grads)
+                tf.sqrt(
+                    rms_momentum_pair[0] - tf.square(rms_momentum_pair[1]) + (
+                        rms_constant
+                    )
+                )
+                for rms_momentum_pair in zip(rms_sum, rms_momentum_sum)
             ]
 
-            rms_updates = [
+            scaled_gradients = [
                 grad_rms_pair[0] / grad_rms_pair[1]
-                for grad_rms_pair in zip(grads, rms)
+                for grad_rms_pair in zip(gradients, rms)
             ]
-            train = optimizer.apply_gradients(zip(rms_updates, params))
+            train = optimizer.apply_gradients(zip(scaled_gradients, variables))
 
-            return tf.group(train, tf.group(*avg_grad_updates))
+            return tf.group(train, tf.group(*rms_updates))
+
+    def build_rms_updates(self, rms_sum, rms_momentum_sum, rms_scale,
+                          gradients):
+        rms_sum_updates = [
+            rms_and_cur_grads[0].assign(
+                rms_scale * rms_and_cur_grads[0] + (
+                    (1 - rms_scale) * tf.square(rms_and_cur_grads[1])
+                )
+            )
+            for rms_and_cur_grads in zip(rms_sum, gradients)
+        ]
+        rms_momentum_sum_updates = [
+            rms_and_cur_grads[0].assign(
+                rms_scale * rms_and_cur_grads[0] + (
+                    (1 - rms_scale) * rms_and_cur_grads[1]
+                )
+            )
+            for rms_and_cur_grads in zip(rms_momentum_sum, gradients)
+        ]
+        return rms_sum_updates + rms_momentum_sum_updates
 
     def copy_model_parameters(self):
         """Copies the model parameters from target to behavior networks."""
