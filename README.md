@@ -22,7 +22,7 @@ TensorFlow 0.12
 
 To train an agent (on Breakout by default):
 ```bash
-> python hedonist/train.py
+> python hedonist/train.py --name [name_for_this_run]
 ```
 
 All summaries, videos, and checkpoints will go to the `results` directory.
@@ -39,7 +39,15 @@ You can record vidoes using a trained model by running:
 To customize a training or demo run (for example to use a different game), change the available settings in `hedonist/config.py`.
 
 
-# Sample Stats
+# Analysis
+
+Since every run has a name, TensorBoard summaries are automatically written to a corresponding subdirectory under `results/stats`. Algorithmic variations can then be compared with graphical overlays in TensorBoard:
+```bash
+> tensorboard --logdir=results/stats
+```
+
+
+## Sample Stats
 
 Running vanilla DQN on OpenAI Gym environment BreakoutDeterministic-v3
 

@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 class Stats:
-    def __init__(self, config, is_eval):
+    def __init__(self, config, run_name, is_eval):
         self.is_eval = is_eval
         self.reward = 0
         self.step_count = 0
@@ -13,6 +13,15 @@ class Stats:
         self.max_score = None
         self.min_score = None
 
+        prefix = 'eval' if is_eval else 'train'
+
+        self.path = 'results/stats/{0}/{1}/{2}/{3}'.format(
+            config['game'],
+            config['agent_type'].__name__,
+            run_name,
+            prefix
+        )
+
         self.score_per_game = tf.placeholder(
             tf.float32,
             shape=[],
@@ -22,48 +31,40 @@ class Stats:
         self.max_reward = tf.placeholder(tf.float32, shape=[])
         self.min_reward = tf.placeholder(tf.float32, shape=[])
 
-        self.score_per_game_summary = tf.scalar_summary(
-            'Score Per Episode',
-            self.score_per_game
-        )
-        self.steps_per_game_summary = tf.scalar_summary(
-            'Steps Per Episode',
-            self.total_steps_per_game
-        )
-        self.max_summary = tf.scalar_summary('Max Score', self.max_reward)
-        self.min_summary = tf.scalar_summary('Min Score', self.min_reward)
-
-        self.path = 'results/stats/{0}/{1}'.format(
-            config['game'],
-            config['agent_type'].__name__
-        )
-
-        if not is_eval:
-            self.avg_loss = tf.placeholder(tf.float32, shape=[], name='loss')
-            self.loss_summary = tf.scalar_summary('Loss', self.avg_loss)
-            self.summary_op = tf.merge_summary(
-                [
-                    self.score_per_game_summary,
-                    self.steps_per_game_summary,
-                    self.loss_summary,
-                    self.max_summary,
-                    self.min_summary
-                ]
+        with tf.name_scope('{}_summaries'.format(prefix)):
+            self.score_per_game_summary = tf.summary.scalar(
+                'score_per_episode',
+                self.score_per_game
             )
-            self.path = self.path + '/train'
-        else:
-            self.summary_op = tf.merge_summary(
-                [
-                    self.score_per_game_summary,
-                    self.steps_per_game_summary,
-                    self.max_summary,
-                    self.min_summary
-                ]
+            self.steps_per_game_summary = tf.summary.scalar(
+                'steps_per_episode',
+                self.total_steps_per_game
             )
-            self.path = self.path + '/eval'
+            self.max_summary = tf.summary.scalar(
+                'max_score',
+                self.max_reward
+            )
+            self.min_summary = tf.summary.scalar(
+                'min_score',
+                self.min_reward
+            )
+
+            summary_ops = [
+                self.score_per_game_summary,
+                self.steps_per_game_summary,
+                self.max_summary,
+                self.min_summary
+            ]
+
+            if not is_eval:
+                self.avg_loss = tf.placeholder(tf.float32, shape=[], name='loss')
+                self.loss_summary = tf.summary.scalar('loss', self.avg_loss)
+                summary_ops.append(self.loss_summary)
+
+            self.summary_op = tf.summary.merge(summary_ops)
 
         self.sess = tf.Session()
-        self.summary_writer = tf.train.SummaryWriter(self.path)
+        self.summary_writer = tf.summary.FileWriter(self.path)
 
     def summarize(self, step):
         avg_loss = 0
