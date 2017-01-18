@@ -110,16 +110,19 @@ class QNetwork():
             conv1 = tf.contrib.layers.conv2d(
                 observation_pl, 32, 8, 4,
                 activation_fn=tf.nn.relu,
+                weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                 trainable=trainable
             )
             conv2 = tf.contrib.layers.conv2d(
                 conv1, 64, 4, 2,
                 activation_fn=tf.nn.relu,
+                weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                 trainable=trainable
             )
             conv3 = tf.contrib.layers.conv2d(
                 conv2, 64, 3, 1,
                 activation_fn=tf.nn.relu,
+                weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                 trainable=trainable
             )
 
@@ -128,11 +131,13 @@ class QNetwork():
             fc1 = tf.contrib.layers.fully_connected(
                 flattened,
                 512,
+                weights_initializer=tf.contrib.layers.xavier_initializer(),
                 trainable=trainable
             )
             return tf.contrib.layers.fully_connected(
                 fc1,
                 self.num_actions,
+                weights_initializer=tf.contrib.layers.xavier_initializer(),
                 trainable=trainable
             )
 
