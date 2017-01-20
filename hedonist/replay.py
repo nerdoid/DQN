@@ -17,302 +17,317 @@ def modulo(numbers, capacity):
     return tf.add(numbers, capacity) % capacity
 
 
-def init_rewards(capacity, index, reward_input, batch_indices, name):
-    """Builds ops to insert into and sample from the reward replay memory.
+class Replay():
+    def __init__(self, sess, capacity, screen_dims, state_size, batch_size,
+                 num_actions):
+        self.sess = sess
+        self.capacity = capacity
+        self.state_size = state_size
+        self.batch_size = batch_size
 
-    Args:
-        capacity: Max size of the replay memory
-        index: Current index for this time step. Determines point of insertion.
-        reward_input: A tensor with a single tf.float32
-        batch_indices: A tensor containing scalars or slices for batch sampling
+        self.frame_input = tf.placeholder(
+            tf.uint8,
+            shape=[1, screen_dims[0], screen_dims[1]],
+            name='observation'
+        )
+        self.action_input = tf.placeholder(
+            tf.int32,
+            shape=[1],
+            name='action'
+        )
+        self.reward_input = tf.placeholder(
+            tf.float32,
+            shape=[1],
+            name='reward'
+        )
+        self.terminal_input = tf.placeholder(
+            tf.bool,
+            shape=[1],
+            name='terminal'
+        )
 
-    Returns:
-        insert_reward: Op to add reward to replay memory
-        reward_sample: Op to sample a mini-batch from replay memory
-    """
-    rewards = tf.Variable(
-        tf.zeros([capacity], dtype=tf.float32)
-    )
+        self.frames = tf.Variable(
+            tf.zeros([capacity, screen_dims[0], screen_dims[1]], dtype=tf.uint8)
+        )
+        self.actions = tf.Variable(
+            tf.zeros([capacity], dtype=tf.int32)
+        )
+        self.rewards = tf.Variable(
+            tf.zeros([capacity], dtype=tf.float32)
+        )
+        self.terminals = tf.Variable(
+            tf.zeros([capacity], dtype=tf.bool)
+        )
 
-    insert_reward = tf.scatter_update(
-        rewards,
-        tf.reshape(index, [1]),
-        reward_input
-    )
+        self.index = tf.Variable(0, name='replay_index')
+        self.size = tf.Variable(0, name='replay_size')
 
-    reward_sample = tf.gather(
-        rewards,
-        batch_indices
-    )
+        self.batch_indices = self.get_batch_indices()
+        self.batch_slices = self.get_batch_slices()
 
-    return insert_reward, reward_sample
+        self.insert_frame = self.build_insert_op(
+            self.frames, self.frame_input
+        )
+        self.insert_action = self.build_insert_op(
+            self.actions, self.action_input
+        )
+        self.insert_reward = self.build_insert_op(
+            self.rewards, self.reward_input
+        )
+        self.insert_terminal = self.build_insert_op(
+            self.terminals, self.terminal_input
+        )
 
+        insert_ops = [
+            self.insert_frame,
+            self.insert_action,
+            self.insert_reward,
+            self.insert_terminal
+        ]
+        # Ensure that insertions occur before index and size are updated.
+        # Without the control dependency, the states of index and size at time
+        # of insertion would be nondeterministic.
+        with tf.control_dependencies(insert_ops):
+            index_update = self.build_index_update()
+            size_update = self.build_size_update()
 
-def init_terminals(capacity, index, terminal_input, batch_indices, name):
-    """Builds ops to insert into and sample from the terminal replay memory.
+        self.insert_op = tf.group(
+            self.insert_frame,
+            self.insert_action,
+            self.insert_reward,
+            self.insert_terminal,
+            index_update,
+            size_update
+        )
 
-    Args:
-        capacity: Max size of the replay memory
-        index: Current index for this time step. Determines point of insertion.
-        terminal_input: A tensor with a single boolean
-        batch_indices: A tensor containing scalars or slices for batch sampling
+        state_samples = self.build_sample_frames_op(self.frames)
+        self.sample_states, self.sample_next_states = state_samples
+        actions_sample = self.build_sample_op(self.actions)
+        self.sample_actions = tf.one_hot(actions_sample, num_actions)
+        self.sample_rewards = self.build_sample_op(self.rewards)
+        self.sample_terminals = self.build_sample_op(self.terminals)
 
-    Returns:
-        insert_terminal: Op to add terminal flag to replay memory
-        terminal_sample: Op to sample a mini-batch from replay memory
-    """
-    terminals = tf.Variable(
-        tf.zeros([capacity], dtype=tf.bool)
-    )
+        self.current_state = self.build_current_state_op()
 
-    insert_terminal = tf.scatter_update(
-        terminals,
-        tf.reshape(index, [1]),
-        terminal_input
-    )
+    def build_insert_op(self, buffer, buffer_input):
+        """
+        Args:
+            buffer_input: [1] tensor
 
-    terminal_sample = tf.gather(
-        terminals,
-        batch_indices
-    )
+        Returns:
+            Op to add new memory to replay memory
+        """
+        return tf.scatter_update(
+            buffer,
+            tf.reshape(self.index, [1]),
+            buffer_input
+        )
 
-    return insert_terminal, terminal_sample
+    def build_sample_op(self, buffer):
+        """
+        Args:
+            buffer: [capacity] tensor with a type of memory (action, terminal,
+                    etc)
+        Returns:
+            Op to sample a mini-batch from replay memory
+        """
+        return tf.gather(
+            buffer,
+            self.batch_indices
+        )
 
+    def build_sample_frames_op(self, buffer):
+        """Samples the frame replay memory to produce the state and the next-
+        state sample.
 
-def init_actions(capacity, index, action_input, batch_indices, num_actions,
-                 name):
+        Args:
+            buffer: [capacity] tensor representing the frame history.
 
-    """Builds ops to insert into and sample from the action replay memory.
+        Returns:
+            Ops to sample a mini-batch for the state and next state.
+        """
+        next_state_sample = tf.transpose(
+            tf.gather(
+                self.frames,
+                self.batch_slices
+            ),
+            perm=[0, 2, 3, 1]
+        )
 
-    Args:
-        capacity: Max size of the replay memory
-        index: Current index for this time step. Determines point of insertion.
-        action_input: A tensor with a single tf.int32
-        batch_indices: A tensor containing scalars or slices for batch sampling
+        state_sample = tf.transpose(
+            tf.gather(
+                self.frames,
+                modulo(self.batch_slices - 1, self.capacity)
+            ),
+            perm=[0, 2, 3, 1]
+        )
 
-    Returns:
-        insert_action: Op to add an action to replay memory
-        one_hot_sample: Op to sample a mini-batch of one-hot actions from
-                        replay memory
-    """
-    actions = tf.Variable(
-        tf.zeros([capacity], dtype=tf.int32)
-    )
+        return state_sample, next_state_sample
 
-    insert_action = tf.scatter_update(
-        actions,
-        tf.reshape(index, [1]),
-        action_input
-    )
+    def get_batch_indices(self):
+        """Generates the replay memory indices to be used for the mini-batch.
 
-    action_sample = tf.gather(
-        actions,
-        batch_indices
-    )
+        Returns:
+            An op that produces indices for the mini-batch.
+        """
+        # These min and max values ensure that we only allow wrapped samples
+        # if the memory is at capacity. Otherwise the first and last states
+        # are not actually correlated and should not be sampled together.
+        replay_size_plus_one = self.size + 1
+        min_value = tf.cond(
+            tf.equal(replay_size_plus_one, self.capacity),
+            lambda: tf.constant(0),
+            lambda: tf.constant(self.state_size)
+        )
+        max_value = tf.cond(
+            tf.equal(replay_size_plus_one, self.capacity),
+            lambda: tf.constant(self.capacity),
+            lambda: self.size
+        )
 
-    one_hot_sample = tf.one_hot(action_sample, num_actions)
+        def attempt_sample(b):
+            """Tries to pick a random index and add it to the batch. Fails if
+            the index would mean the first state (consisting of N frames) would
+            represent a terminal state. These samples would mislead the agent
+            because they occured in different episodes and are unrelated.
 
-    return insert_action, one_hot_sample
+            Args:
+                b: A tensor list of indices sampled so far.
+            Returns:
+                A (possibly) updated tensor list of indices.
+            """
+            sample_index = tf.random_uniform(
+                [1], min_value, max_value, dtype=tf.int32
+            )
+            sample_slice = tf.map_fn(
+                lambda i: modulo(tf.range(i - self.state_size, i), self.capacity),
+                sample_index
+            )
+            prev_terminals = tf.gather(self.terminals, sample_slice)
+            terminal_sum = tf.reduce_sum(tf.cast(prev_terminals, tf.int32))
 
+            return tf.cond(
+                tf.equal(terminal_sum, tf.constant(0)),
+                lambda: tf.concat(0, [b, sample_index]),
+                lambda: b
+            )
 
-def get_current_state(capacity, index, state_size, frames):
-    """Builds op to retrieve the state from the current index.
+        batch_indices = tf.zeros([0], dtype=tf.int32)
+        condition = lambda b: tf.less(tf.size(b), self.batch_size)
+        body = attempt_sample
+        return tf.while_loop(
+            condition,
+            body,
+            [batch_indices],
+            shape_invariants=[tf.TensorShape([None])]
+        )
 
-    Args:
-        capacity: Max size of the replay memory
-        index: Current index for this time step. Determines point of insertion.
-        state_size: A [1] tensor representing # of frames in a state
-        frames: A [capacity, 84, 84] tensor for the frame replay memory
+    def get_batch_slices(self):
+        """Converts sample indices to slices for sampling the frames to produce
+        states of N frames.
 
-    Returns:
-        A [state_size, 84, 84] tensor representing the state
-    """
-    return tf.transpose(
-        tf.gather(
-            frames,
-            modulo(tf.range(index - state_size, index), capacity)
-        ),
-        perm=[1, 2, 0]
-    )
+        Returns:
+            An op to yield frame slices.
+        """
+        # States are N consecutive frames. So we need to convert each index
+        # into a vector of the form [index - N + 1, index - N + 2, ..., index]
+        batch_slices = tf.map_fn(
+            lambda i: modulo(tf.range(i - self.state_size + 1, i + 1), self.capacity),
+            self.batch_indices
+        )
 
+        return batch_slices
 
-def init_frames(capacity, screen_dims, state_size, index, frame_input,
-                batch_slices, name=None):
-    """Builds ops to insert into and sample from the frame replay memory.
+    def build_current_state_op(self):
+        """Builds op to retrieve the state from the current index.
 
-    Args:
-        capacity: Max size of the replay memory
-        screen_dims: A (height, width) tuple
-        state_size: A [1] tensor representing # of frames in a state
-        index: Current index for this time step. Determines point of insertion.
-        frame_input: A [1, 84, 84] tensor of type tf.uint8
-        batch_indices: A tensor containing scalars or slices for batch sampling
+        Returns:
+            A [state_size, 84, 84] tensor representing the state
+        """
+        return tf.transpose(
+            tf.gather(
+                self.frames,
+                modulo(
+                    tf.range(self.index - self.state_size, self.index),
+                    self.capacity
+                )
+            ),
+            perm=[1, 2, 0]
+        )
 
-    Returns:
-        insert_action: Op to add an action to replay memory
-        current_state: Op that retrieves the state from the current index
-        state_sample: Op to sample a mini-batch of states from replay memory
-        next_state_sample: Op to sample a mini-batch of next states from replay
-                           memory
-    """
-    frames = tf.Variable(
-        tf.zeros([capacity, screen_dims[0], screen_dims[1]], dtype=tf.uint8)
-    )
+    def build_index_update(self):
+        """Builds an op that increments the index and wrap it upon reaching
+        the capacity.
 
-    insert_frame = tf.scatter_update(
-        frames,
-        tf.reshape(index, [1]),
-        frame_input
-    )
+        Returns:
+            An op that increments the index
+        """
+        index_plus_one = self.index + 1
+        index_update = tf.assign(
+            self.index,
+            index_plus_one % tf.constant(self.capacity),
+            name='replay_index_update'
+        )
 
-    next_state_sample = tf.transpose(
-        tf.gather(
-            frames,
-            batch_slices
-        ),
-        perm=[0, 2, 3, 1]
-    )
+        return index_update
 
-    state_sample = tf.transpose(
-        tf.gather(
-            frames,
-            modulo(batch_slices - 1, capacity)
-        ),
-        perm=[0, 2, 3, 1]
-    )
+    def build_size_update(self):
+        """Builds an op that increments the current size of the replay memory
+        until it reaches capacity. Once reached, the size then stays at
+        capacity.
 
-    current_state = get_current_state(capacity, index, state_size, frames)
+        Returns:
+            An op that increments the size
+        """
+        size_plus_one = self.size + 1
+        next_size = tf.cond(
+            tf.equal(size_plus_one, self.capacity),
+            lambda: self.size,
+            lambda: size_plus_one
+        )
+        size_update = tf.assign(
+            self.size, next_size, name='replay_size_update'
+        )
 
-    return insert_frame, current_state, state_sample, next_state_sample
+        return size_update
 
+    def insert(self, frame, action, reward, terminal):
+        """Insert a new memory into the replay memory.
 
-def init_index_update(capacity, index):
-    """Builds an op that increments the index and will wrap upon reaching the
-    capacity.
+        Args:
+            frame: A [screen_size, screen_size] numpy array
+            action: A scalar
+            reward: A float32
+            terminal: A boolean
+        """
+        self.sess.run(
+            self.insert_op,
+            feed_dict={
+                self.frame_input: [frame],
+                self.action_input: [action],
+                self.reward_input: [reward],
+                self.terminal_input: [terminal]
+            }
+        )
 
-    Args:
-        capacity: Max size of the replay memory
-        index: Current index for this time step. Determines point of insertion.
+    def get_current_state(self):
+        """Gets the last N frames"""
+        return self.sess.run(self.current_state)
 
-    Returns:
-        An op that increments the index
-    """
-    index_plus_one = index + 1
-    index_update = tf.assign(
-        index,
-        index_plus_one % tf.constant(capacity),
-        name='replay_index_update'
-    )
+    def sample(self):
+        """Gets a mini-batch from the replay memory.
 
-    return index_update
-
-
-def init_size_update(capacity, size):
-    """Builds an op that increments the current size of the replay memory until
-    it reaches capacity. The size then stays at the capacity.
-
-    Args:
-        capacity: Max size of the replay memory
-        index: Current index for this time step. Determines point of insertion.
-
-    Returns:
-        An op that increments the size
-    """
-
-    # Size - will hold at capacity
-    size_plus_one = size + 1
-    next_size = tf.cond(
-        tf.equal(size_plus_one, capacity),
-        lambda: size,
-        lambda: size_plus_one
-    )
-    size_update = tf.assign(size, next_size, name='replay_size_update')
-
-    return size_update
-
-
-def get_batch_slices(batch_size, state_size, replay_size, capacity):
-    # These min and max values ensure that we only allow wrapped samples if the
-    # memory is at capacity. Otherwise the first and last states are not
-    # actually correlated and should not be sampled together.
-    replay_size_plus_one = replay_size + 1
-    min_value = tf.cond(
-        tf.equal(replay_size_plus_one, capacity),
-        lambda: tf.constant(0),
-        lambda: tf.constant(state_size)
-    )
-    max_value = tf.cond(
-        tf.equal(replay_size_plus_one, capacity),
-        lambda: tf.constant(capacity),
-        lambda: replay_size
-    )
-    batch_indices = tf.random_uniform(
-        [batch_size], min_value, max_value, dtype=tf.int32
-    )
-
-    # States are N consecutive frames. So we need to convert each index into a
-    # vector of the form [index - N + 1, index - N + 2, ..., index]
-    batch_slices = tf.map_fn(
-        lambda i: modulo(tf.range(i - state_size + 1, i + 1), capacity),
-        batch_indices
-    )
-
-    return batch_indices, batch_slices
-
-
-def init_memory(capacity, screen_dims, state_size, batch_size, num_actions,
-                frame_input, action_input, reward_input, terminal_input,
-                name=None):
-    index = tf.Variable(0, name='replay_index')
-    size = tf.Variable(0, name='replay_size')
-    # index, index_update = init_index(capacity)
-    # size, size_update = init_size(capacity)
-
-    batch_indices, batch_slices = get_batch_slices(batch_size, state_size, size, capacity)
-
-    insert_reward, reward_sample = init_rewards(
-        capacity, index, reward_input, batch_indices, name
-    )
-    insert_terminal, terminal_sample = init_terminals(
-        capacity, index, terminal_input, batch_indices, name
-    )
-    insert_action, action_sample = init_actions(
-        capacity, index, action_input, batch_indices, num_actions, name
-    )
-
-    insert_frame, current_state, state_sample, next_state_sample = init_frames(
-        capacity,
-        screen_dims,
-        state_size,
-        index,
-        frame_input,
-        batch_slices,
-        name
-    )
-
-    insert_ops = [insert_reward, insert_terminal, insert_action, insert_frame]
-    # Ensure that insertions occur before index and size are updated. Without
-    # the control dependency, the states of index and size at time of insertion
-    # would be nondeterministic.
-    with tf.control_dependencies(insert_ops):
-        index_update = init_index_update(capacity, index)
-        size_update = init_size_update(capacity, size)
-
-    insert = tf.group(
-        insert_frame,
-        insert_action,
-        insert_reward,
-        insert_terminal,
-        index_update,
-        size_update
-    )
-
-    return (
-        insert,
-        current_state,
-        state_sample,
-        action_sample,
-        reward_sample,
-        next_state_sample,
-        terminal_sample
-    )
+        Returns:
+            A list of lists where each list is the batch for the corresponding
+            part of the memory (states, actions, rewards, next_states,
+            terminals).
+        """
+        return self.sess.run(
+            [
+                self.sample_states,
+                self.sample_actions,
+                self.sample_rewards,
+                self.sample_next_states,
+                self.sample_terminals
+            ]
+        )

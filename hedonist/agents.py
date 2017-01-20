@@ -10,49 +10,24 @@ class DeepQLearner():
     """Agent that executes the deep Q learning algorithm."""
     def __init__(self, config, num_actions, train_env, train_stats,
                  eval_env, eval_stats, is_demo=False):
+        sess = tf.Session()
+
         self.network = self.create_network(config, num_actions, is_demo)
         self.train_env = train_env
         self.train_stats = train_stats
         self.eval_env = eval_env
         self.eval_stats = eval_stats
 
-        self.frame_pl = tf.placeholder(
-            tf.uint8,
-            shape=[1, 84, 84],
-            name='observation'
-        )
-        self.action_pl = tf.placeholder(
-            tf.int32,
-            shape=[1],
-            name='action'
-        )
-        self.reward_pl = tf.placeholder(
-            tf.float32,
-            shape=[1],
-            name='reward'
-        )
-        self.terminal_pl = tf.placeholder(
-            tf.bool,
-            shape=[1],
-            name='terminal'
-        )
-
-        self.sess = tf.Session()
-
-        memory_ops = replay.init_memory(
+        self.replay = replay.Replay(
+            sess,
             config['memory_capacity'],
             config['screen_dims'],
             config['history_length'],
             config['batch_size'],
-            num_actions,
-            frame_input=self.frame_pl,
-            action_input=self.action_pl,
-            reward_input=self.reward_pl,
-            terminal_input=self.terminal_pl
+            num_actions
         )
-        self.insert, self.current_state, self.state_sample, self.action_sample, self.reward_sample, self.next_state_sample, self.terminal_sample = memory_ops
 
-        self.sess.run(tf.global_variables_initializer())
+        sess.run(tf.global_variables_initializer())
 
         self.num_actions = num_actions
         self.history_length = config['history_length']
@@ -76,8 +51,7 @@ class DeepQLearner():
 
     def choose_action(self, epsilon):
         if random.random() >= epsilon:
-            #state = self.memory.get_last_state()
-            state = [self.sess.run(self.current_state)]
+            state = [self.replay.get_current_state()]
             q_values = self.network.predict(state)
             return np.argmax(q_values)
         else:
@@ -99,22 +73,12 @@ class DeepQLearner():
 
         return action
 
-    def insert_memory(self, frame, action, reward, terminal):
-        self.sess.run(
-            self.insert,
-            feed_dict={
-                self.frame_pl: [frame],
-                self.action_pl: [action],
-                self.reward_pl: [reward],
-                self.terminal_pl: [terminal]
-            }
-        )
 
     def start_new_episode(self, env):
         try:
             initial_state = env.reset()
             for experience in initial_state:
-                self.insert_memory(
+                self.replay.insert(
                     experience[0],
                     experience[1],
                     experience[2],
@@ -142,7 +106,7 @@ class DeepQLearner():
             reward = self.process_reward(raw_reward)
 
             self.train_stats.add_reward(reward)
-            self.insert_memory(frame, action, reward, terminal)
+            self.replay.insert(frame, action, reward, terminal)
 
             if terminal:
                 self.start_new_episode(self.train_env)
@@ -160,22 +124,14 @@ class DeepQLearner():
             reward = self.process_reward(raw_reward)
 
             self.train_stats.add_reward(raw_reward)
-            self.insert_memory(frame, action, reward, terminal)
+            self.replay.insert(frame, action, reward, terminal)
 
             if terminal:
                 self.start_new_episode(self.train_env)
 
             # train
             if step % self.training_freq == 0:
-                sample = self.sess.run(
-                    [
-                        self.state_sample,
-                        self.action_sample,
-                        self.reward_sample,
-                        self.next_state_sample,
-                        self.terminal_sample
-                    ]
-                )
+                sample = self.replay.sample()
                 states, actions, rewards, next_states, terminals = sample
 
                 loss = self.network.train(
