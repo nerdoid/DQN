@@ -12,7 +12,11 @@ def train(config, run_name):
         config, monitor=True, monitor_name='train', run_name=run_name
     )
     eval_env = envs.Atari(
-        config, monitor=True, monitor_name='eval', run_name=run_name
+        config,
+        monitor=True,
+        monitor_name='eval',
+        monitor_freq=10,
+        run_name=run_name
     )
     num_actions = train_env.num_actions
 

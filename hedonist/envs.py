@@ -6,7 +6,7 @@ import numpy as np
 
 class Atari:
     """Wrapper around OpenAI gym atari environments."""
-    def __init__(self, config, monitor=False, monitor_freq=50,
+    def __init__(self, config, monitor=False, monitor_freq=250,
                  monitor_name=None, run_name=None):
         self.screen_width, self.screen_height = config['screen_dims']
         self.history_length = config['history_length']
