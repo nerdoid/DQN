@@ -7,7 +7,7 @@ class QNetwork():
     of a deep Q-learning algorithm. This houses both the behavior and target
     networks.
     """
-    def __init__(self, config, num_actions, restore=False):
+    def __init__(self, config, num_actions, restore=False, run_name=None):
         print('Constructing QNetwork')
 
         self.num_actions = num_actions
@@ -18,6 +18,8 @@ class QNetwork():
             config['game'],
             config['agent_type'].__name__
         )
+        if run_name:
+            self.checkpoint_path = self.checkpoint_path + '/' + run_name
         if not os.path.exists(self.checkpoint_path):
             os.makedirs(self.checkpoint_path)
         self.checkpoint_filename = 'agent.ckpt'

@@ -9,10 +9,12 @@ import tensorflow as tf
 class DeepQLearner():
     """Agent that executes the deep Q learning algorithm."""
     def __init__(self, config, num_actions, train_env, train_stats,
-                 eval_env, eval_stats, is_demo=False):
+                 eval_env, eval_stats, is_demo=False, run_name=None):
         sess = tf.Session()
 
-        self.network = self.create_network(config, num_actions, is_demo)
+        self.network = networks.QNetwork(
+            config, num_actions, is_demo, run_name
+        )
         self.train_env = train_env
         self.train_stats = train_stats
         self.eval_env = eval_env
@@ -46,8 +48,8 @@ class DeepQLearner():
         self.summary_freq = config['summary_freq']
         self.reward_processing = config['reward_processing']
 
-    def create_network(self, config, num_actions, is_demo):
-        return networks.QNetwork(config, num_actions, is_demo)
+    def create_network(self, config, num_actions, is_demo, run_name):
+        return networks.QNetwork(config, num_actions, is_demo, run_name)
 
     def choose_action(self, epsilon):
         if random.random() >= epsilon:

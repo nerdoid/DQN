@@ -8,8 +8,12 @@ import stats
 def train(config, run_name):
     train_stats = stats.Stats(config, run_name, False)
     eval_stats = stats.Stats(config, run_name, True)
-    train_env = envs.Atari(config, monitor=True, monitor_name='train')
-    eval_env = envs.Atari(config, monitor=True, monitor_name='eval')
+    train_env = envs.Atari(
+        config, monitor=True, monitor_name='train', run_name=run_name
+    )
+    eval_env = envs.Atari(
+        config, monitor=True, monitor_name='eval', run_name=run_name
+    )
     num_actions = train_env.num_actions
 
     train_agent = agents.DeepQLearner(
@@ -18,7 +22,8 @@ def train(config, run_name):
         train_env,
         train_stats,
         eval_env,
-        eval_stats
+        eval_stats,
+        run_name=run_name
     )
 
     train_agent.train(config['training_steps'])

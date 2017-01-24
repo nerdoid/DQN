@@ -7,17 +7,26 @@ import numpy as np
 class Atari:
     """Wrapper around OpenAI gym atari environments."""
     def __init__(self, config, monitor=False, monitor_freq=50,
-                 monitor_name=None):
+                 monitor_name=None, run_name=None):
         self.screen_width, self.screen_height = config['screen_dims']
         self.history_length = config['history_length']
         self.monitor = monitor
 
         self.env = gym.make(config['game'])
 
-        monitor_path = 'results/videos/'
-        if monitor_name:
-            monitor_path += monitor_name + '/'
-        if self.monitor:
+        if monitor:
+            assert monitor_name is not None, 'monitor_name is blank'
+
+            monitor_path = 'results/videos/{0}/{1}'.format(
+                config['game'],
+                config['agent_type'].__name__
+            )
+
+            if run_name:
+                monitor_path = monitor_path + '/' + run_name
+
+            monitor_path = monitor_path + '/' + monitor_name
+
             self.env = wrappers.Monitor(
                 self.env,
                 monitor_path,
