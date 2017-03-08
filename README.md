@@ -1,4 +1,4 @@
-# Hedonist
+# DQN
 
 This project is a collection of exploratory deep reinforcement learning algorithms implemented in TensorFlow and the OpenAI Gym. It currently includes just the [DQN](https://deepmind.com/research/dqn/) and [Double DQN](https://arxiv.org/abs/1509.06461) algorithms. As I learn other RL algorithms, I will add them.
 
@@ -8,7 +8,7 @@ I'm testing the limits of how much functionality can be implemented in TensorFlo
 2. Future proofing - As GPU RAM goes up, we can keep more GPU-side and reduce fetching delays.
 3. Master the computational graph - Immerse myself in the computational graph paradigm to better understand it.
 
-As such, a novel aspect of Hedonist's code is that the DQN's replay memory is implemented using TensorFlow ops. This may very well turn out to be a terrible idea. But I won't know until I run some benchmarks.
+As such, a novel aspect of this project is that the DQN's replay memory is implemented using TensorFlow ops. This may very well turn out to be a terrible idea. But I won't know until I run some benchmarks.
 
 # Requirements
 
@@ -51,5 +51,5 @@ Since every run has a name, TensorBoard summaries are automatically written to a
 
 Running vanilla DQN on OpenAI Gym environment BreakoutDeterministic-v3
 
-<img src="https://raw.githubusercontent.com/nerdoid/hedonist/master/assets/average_score_per_episode.png?raw=true" alt="Average Score" title="Average Score" width="307" height="207">
-<img src="https://raw.githubusercontent.com/nerdoid/hedonist/master/assets/max_score_per_episode.png?raw=true" alt="Average Score" title="Average Score" width="307" height="207">
+<img src="https://raw.githubusercontent.com/nerdoid/DQN/master/assets/average_score_per_episode.png?raw=true" alt="Average Score" title="Average Score" width="307" height="207">
+<img src="https://raw.githubusercontent.com/nerdoid/DQN/master/assets/max_score_per_episode.png?raw=true" alt="Average Score" title="Average Score" width="307" height="207">
