@@ -20,7 +20,7 @@ def train(config, run_name):
     )
     num_actions = train_env.num_actions
 
-    train_agent = agents.DeepQLearner(
+    train_agent = config['agent_type'](
         config,
         num_actions,
         train_env,

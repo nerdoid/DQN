@@ -147,7 +147,7 @@ class QNetwork():
         """Build loss graph"""
         with tf.name_scope('loss'):
             predictions = tf.reduce_sum(
-                tf.mul(self.behavior_q_layer, self.actions),
+                tf.multiply(self.behavior_q_layer, self.actions),
                 1
             )
 

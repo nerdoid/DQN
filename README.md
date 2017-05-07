@@ -1,20 +1,12 @@
 # DQN
 
-This project is a collection of exploratory deep reinforcement learning algorithms implemented in TensorFlow and the OpenAI Gym. It currently includes just the [DQN](https://deepmind.com/research/dqn/) and [Double DQN](https://arxiv.org/abs/1509.06461) algorithms. As I learn other RL algorithms, I will add them.
-
-I'm testing the limits of how much functionality can be implemented in TensorFlow exclusively rather than the usual libraries like NumPy. The motivation is:
-
-1. Easy device placement - TensorFlow makes this super simple.
-2. Future proofing - As GPU RAM goes up, we can keep more GPU-side and reduce fetching delays.
-3. Master the computational graph - Immerse myself in the computational graph paradigm to better understand it.
-
-As such, a novel aspect of this project is that the DQN's replay memory is implemented using TensorFlow ops. This may very well turn out to be a terrible idea. But I won't know until I run some benchmarks.
+This project is an implementation of DeepMind's DQN algorithm and its associated bag of tricks. It relies on TensorFlow and the OpenAI Gym. It currently includes the [DQN](https://deepmind.com/research/dqn/) and [Double DQN](https://arxiv.org/abs/1509.06461) algorithms. Most notably, prioritized experience replay is not yet implemented.
 
 # Requirements
 
-Python 3
+Python 3 or greater
 
-TensorFlow 0.12
+TensorFlow 1.0 or greater
 
 # Getting Started
 
@@ -22,7 +14,7 @@ TensorFlow 0.12
 
 To train an agent (on Breakout by default):
 ```bash
-> python hedonist/train.py --name [name_for_this_run]
+> python dqn/train.py --name [name_for_this_run]
 ```
 
 All summaries, videos, and checkpoints will go to the `results` directory.
@@ -31,12 +23,12 @@ All summaries, videos, and checkpoints will go to the `results` directory.
 
 You can record vidoes using a trained model by running:
 ```bash
-> python hedonist/demo.py
+> python dqn/demo.py
 ```
 
 # Configuration
 
-To customize a training or demo run (for example to use a different game), change the available settings in `hedonist/config.py`.
+To customize a training or demo run (for example to use a different game), change the available settings in `dqn/config.py`.
 
 
 # Analysis

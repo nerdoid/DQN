@@ -208,7 +208,7 @@ class Replay():
 
             return tf.cond(
                 tf.equal(terminal_sum, tf.constant(0)),
-                lambda: tf.concat(0, [b, sample_index]),
+                lambda: tf.concat([b, sample_index], 0),
                 lambda: b
             )
 

@@ -12,7 +12,7 @@ class DeepQLearner():
                  eval_env, eval_stats, is_demo=False, run_name=None):
         sess = tf.Session()
 
-        self.network = networks.QNetwork(
+        self.network = self.create_network(
             config, num_actions, is_demo, run_name
         )
         self.train_env = train_env
@@ -210,5 +210,5 @@ class DeepQLearner():
 
 
 class DoubleDeepQLearner(DeepQLearner):
-    def create_network(self, config, num_actions, is_demo):
-        return networks.DoubleQNetwork(config, num_actions, is_demo)
+    def create_network(self, config, num_actions, is_demo, run_name):
+        return networks.DoubleQNetwork(config, num_actions, is_demo, run_name)
